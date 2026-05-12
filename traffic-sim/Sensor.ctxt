@@ -1,0 +1,9 @@
+#BlueJ class context
+comment0.target=Sensor
+comment1.params=
+comment1.target=Sensor()
+comment2.params=
+comment2.target=void\ act()
+comment3.params=
+comment3.target=void\ sendTrafficData()
+numComments=4
