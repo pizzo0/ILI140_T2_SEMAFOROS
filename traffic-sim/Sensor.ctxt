@@ -1,9 +1,15 @@
 #BlueJ class context
 comment0.target=Sensor
-comment1.params=
-comment1.target=Sensor()
+comment1.params=id
+comment1.target=Sensor(java.lang.String)
 comment2.params=
 comment2.target=void\ act()
 comment3.params=
-comment3.target=void\ sendTrafficData()
-numComments=4
+comment3.target=void\ detectCars()
+comment4.params=
+comment4.target=void\ sendTrafficData()
+comment5.params=
+comment5.target=void\ initializeMQ()
+comment6.params=
+comment6.target=void\ drawSensor()
+numComments=7
