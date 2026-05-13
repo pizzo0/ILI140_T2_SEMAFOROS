@@ -1,5 +1,3 @@
-// TrafficLightGroup.java
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,101 +5,62 @@ public class TrafficLightGroup
 {
     private String id;
 
-    private List<TrafficLight> lights =
-        new ArrayList<TrafficLight>();
+    private List<TrafficLight> lights = new ArrayList<>();
+    private List<String> sensors = new ArrayList<>();
 
-    private List<String> sensors =
-        new ArrayList<String>();
-
-    private int trafficScore = 0;
-
-    private long greenSince = 0;
+    private int cycleTraffic = 0;
 
     public TrafficLightGroup(String id)
     {
         this.id = id;
     }
 
-    public void addLight(
-        TrafficLight light
-    )
+    public void addLight(TrafficLight light)
     {
         lights.add(light);
     }
 
-    public void addSensor(
-        String sensor
-    )
+    public void addSensor(String sensor)
     {
         sensors.add(sensor);
     }
 
-    public boolean ownsSensor(
-        String sensor
-    )
+    public boolean ownsSensor(String sensor)
     {
         return sensors.contains(sensor);
     }
 
-    public void addTraffic(
-        int amount
-    )
+    public void addTraffic(int amount)
     {
-        trafficScore += amount;
-    }
-
-    public void setGreen()
-    {
-        for (
-            TrafficLight light
-            : lights
-        ) {
-            light.setState(
-                TrafficLight.State.GREEN
-            );
-        }
-
-        greenSince =
-            System.currentTimeMillis();
-
-        System.out.println(
-            "[GROUP "
-            + id
-            + "] GREEN"
-        );
-    }
-
-    public void setRed()
-    {
-        for (
-            TrafficLight light
-            : lights
-        ) {
-            light.setState(
-                TrafficLight.State.RED
-            );
-        }
-
-        System.out.println(
-            "[GROUP "
-            + id
-            + "] RED"
-        );
+        cycleTraffic += amount;
     }
 
     public int getTrafficScore()
     {
-        return trafficScore;
+        return cycleTraffic;
     }
 
-    public void clearTraffic()
+    public void resetTraffic()
     {
-        trafficScore = 0;
+        cycleTraffic = 0;
     }
 
-    public long getGreenSince()
+    public void setGreen()
     {
-        return greenSince;
+        for (TrafficLight light : lights) {
+            light.setState(TrafficLight.State.GREEN);
+        }
+
+        System.out.println("[GROUP " + id + "] GREEN");
+    }
+
+    public void setRed()
+    {
+        for (TrafficLight light : lights) {
+            light.setState(TrafficLight.State.RED);
+        }
+
+        System.out.println("[GROUP " + id + "] RED");
     }
 
     public String getId()

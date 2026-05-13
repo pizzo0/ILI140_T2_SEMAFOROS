@@ -1,173 +1,68 @@
-// TrafficController.java
-
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-
+import javax.jms.*;
 import org.apache.activemq.ActiveMQConnectionFactory;
 
 public class TrafficController
 {
-    private List<TrafficLightGroup> groups =
-        new ArrayList<TrafficLightGroup>();
-
+    private List<TrafficLightGroup> groups = new ArrayList<>();
     private TrafficLightGroup activeGroup;
-
-    /*
-        MQ
-    */
 
     private Connection connection;
     private Session session;
-
     private MessageConsumer consumer;
 
-    /*
-        CICLO ACTUAL
-    */
-
     private long cycleStart = 0;
-
-    /*
-        TIEMPO ACTUAL DEL CICLO
-        (SE PUEDE EXTENDER)
-    */
-
-    private long currentCycleDuration =
-        BASE_GREEN_TIME;
-
-    /*
-        CUANTAS VECES SE HA EXTENDIDO
-        ESTE CICLO
-    */
-
+    private long currentCycleDuration = BASE_GREEN_TIME;
     private int extensionsUsed = 0;
 
-    /*
-        CONFIG
-    */
-
-    /*
-        CHANGE_GREEN:
-        CAMBIAR UN GRUPO A VERDE
-    */
-
-    private static final long BASE_GREEN_TIME =
-        5000;
-
-    /*
-        EXTEND_GREEN:
-        EXTENDER VERDE
-    */
-
-    private static final long EXTEND_TIME =
-        2500;
-
-    /*
-        MAXIMO DE EXTENSIONES
-        POR CICLO
-    */
-
-    private static final int MAX_EXTENSIONS =
-        4;
+    private static final long BASE_GREEN_TIME = 5000;
+    private static final long EXTEND_TIME = 2500;
+    private static final int MAX_EXTENSIONS = 4;
 
     public TrafficController()
     {
         initializeMQ();
     }
 
-    public void addGroup(
-        TrafficLightGroup group
-    )
+    public void addGroup(TrafficLightGroup group)
     {
         groups.add(group);
 
         if (activeGroup == null) {
-
-            /*
-                CHANGE_GREEN
-            */
-
             activeGroup = group;
-
             group.setGreen();
-
-            cycleStart =
-                System.currentTimeMillis();
+            cycleStart = System.currentTimeMillis();
         }
     }
 
     public void act()
     {
         processMessages();
-
         evaluateCycle();
     }
 
     private void processMessages()
     {
         try {
-
             Message message;
 
-            while (
-                (message =
-                    consumer.receiveNoWait())
-                    != null
-            ) {
+            while ((message = consumer.receiveNoWait()) != null) {
 
-                if (
-                    !(message instanceof TextMessage)
-                ) {
-                    continue;
-                }
+                if (!(message instanceof TextMessage)) continue;
 
-                String text =
-                    ((TextMessage) message)
-                        .getText();
+                String text = ((TextMessage) message).getText();
 
-                String sensor =
-                    extract(
-                        text,
-                        "sensor"
-                    );
+                String sensor = extract(text, "sensor");
+                int cars = Integer.parseInt(extract(text, "cars"));
 
-                int cars =
-                    Integer.parseInt(
-                        extract(
-                            text,
-                            "cars"
-                        )
-                    );
-
-                for (
-                    TrafficLightGroup group
-                    : groups
-                ) {
-
-                    if (
-                        group.ownsSensor(
-                            sensor
-                        )
-                    ) {
-
-                        group.addTraffic(
-                            cars
-                        );
+                for (TrafficLightGroup group : groups) {
+                    if (group.ownsSensor(sensor)) {
+                        group.addTraffic(cars);
 
                         System.out.println(
-                            "["
-                            + group.getId()
-                            + "] +"
-                            + cars
-                            + " autos"
+                            "[" + group.getId() + "] +" + cars + " autos"
                         );
                     }
                 }
@@ -180,109 +75,52 @@ public class TrafficController
 
     private void evaluateCycle()
     {
-        if (activeGroup == null) {
-            return;
-        }
+        if (activeGroup == null) return;
 
-        long now =
-            System.currentTimeMillis();
+        long now = System.currentTimeMillis();
+        long elapsed = now - cycleStart;
 
-        long elapsed =
-            now - cycleStart;
+        long remaining = currentCycleDuration - elapsed;
 
-        long remaining =
-            currentCycleDuration
-            - elapsed;
+        if (remaining > 0) return;
 
-        /*
-            TODAVIA QUEDA TIEMPO
-        */
+        if (evaluateExtension()) return;
 
-        if (remaining > 0) {
-            return;
-        }
-
-        /*
-            INTENTAR EXTENDER
-        */
-
-        boolean extended =
-            evaluateExtension();
-
-        /*
-            SI SE EXTENDIO,
-            CONTINUAR MISMO CICLO
-        */
-
-        if (extended) {
-            return;
-        }
-
-        /*
-            CAMBIO DE CICLO
-        */
-
-        TrafficLightGroup next =
-            getNextGroup();
+        TrafficLightGroup next = getNextGroup();
 
         if (next != null) {
-
             switchGroup(next);
         }
     }
 
     private boolean evaluateExtension()
     {
-        /*
-            YA LLEGO AL LIMITE
-        */
+        if (extensionsUsed >= MAX_EXTENSIONS) return false;
 
-        if (
-            extensionsUsed >=
-            MAX_EXTENSIONS
-        ) {
-            return false;
-        }
-
-        int activeTraffic =
-            activeGroup.getTrafficScore();
+        int activeTraffic = activeGroup.getTrafficScore();
 
         int waitingTraffic = 0;
 
-        for (
-            TrafficLightGroup group
-            : groups
-        ) {
-
-            if (group == activeGroup) {
-                continue;
+        for (TrafficLightGroup group : groups) {
+            if (group != activeGroup) {
+                waitingTraffic += group.getTrafficScore();
             }
-
-            waitingTraffic +=
-                group.getTrafficScore();
         }
 
-        /*
-            EXTEND_GREEN
+        System.out.println(
+            "[DEBUG] active=" + activeTraffic +
+            " waiting=" + waitingTraffic +
+            " ext=" + extensionsUsed
+        );
 
-            SI:
-            activeTraffic > waitingTraffic * 4
-        */
-
-        if (
-            activeTraffic >
-            waitingTraffic * 4
-        ) {
-
-            currentCycleDuration +=
-                EXTEND_TIME;
-
+        if (activeTraffic > 0 &&
+            activeTraffic > waitingTraffic * 2)
+        {
+            currentCycleDuration += EXTEND_TIME;
             extensionsUsed++;
 
             System.out.println(
-                "[EXTEND_GREEN] "
-                + activeGroup.getId()
-                + " +5s"
+                "[EXTEND_GREEN] " + activeGroup.getId()
             );
 
             return true;
@@ -293,206 +131,87 @@ public class TrafficController
 
     private TrafficLightGroup getNextGroup()
     {
-        TrafficLightGroup best =
-            null;
-
+        TrafficLightGroup best = null;
         int bestScore = -1;
 
-        for (
-            TrafficLightGroup group
-            : groups
-        ) {
+        for (TrafficLightGroup group : groups) {
+            if (group == activeGroup) continue;
 
-            /*
-                IGNORAR EL ACTUAL
-            */
+            int score = group.getTrafficScore();
 
-            if (group == activeGroup) {
-                continue;
-            }
-
-            if (
-                group.getTrafficScore()
-                > bestScore
-            ) {
-
+            if (score > bestScore) {
                 best = group;
-
-                bestScore =
-                    group.getTrafficScore();
+                bestScore = score;
             }
         }
 
-        /*
-            SI TODOS TIENEN 0,
-            IGUAL CAMBIAR
-        */
+        if (best != null) return best;
 
-        if (best == null) {
-
-            for (
-                TrafficLightGroup group
-                : groups
-            ) {
-
-                if (group != activeGroup) {
-                    return group;
-                }
-            }
+        for (TrafficLightGroup group : groups) {
+            if (group != activeGroup) return group;
         }
 
-        return best;
+        return null;
     }
 
-    private void switchGroup(
-        TrafficLightGroup next
-    )
+    private void switchGroup(TrafficLightGroup next)
     {
-        if (next == activeGroup) {
-            return;
-        }
+        System.out.println("====================");
 
-        System.out.println(
-            "===================="
-        );
-
-        System.out.println(
-            "[CHANGE_RED] "
-            + activeGroup.getId()
-        );
-
-        /*
-            CHANGE_RED
-        */
-
+        System.out.println("[CHANGE_RED] " + activeGroup.getId());
         activeGroup.setRed();
 
-        /*
-            EL GRUPO QUE SALE
-            DE VERDE TERMINA
-            SU CICLO
-        */
-
-        activeGroup.clearTraffic();
-
-        System.out.println(
-            "[CHANGE_GREEN] "
-            + next.getId()
-        );
-
-        /*
-            EL NUEVO GRUPO
-            EMPIEZA UN NUEVO
-            CICLO DESDE 0
-        */
-
-        next.clearTraffic();
-
-        /*
-            CHANGE_GREEN
-        */
-
+        System.out.println("[CHANGE_GREEN] " + next.getId());
         next.setGreen();
+
+        activeGroup.resetTraffic();
+        next.resetTraffic();
 
         activeGroup = next;
 
-        /*
-            NUEVO CICLO
-        */
-
-        cycleStart =
-            System.currentTimeMillis();
-
-        currentCycleDuration =
-            BASE_GREEN_TIME;
-
+        cycleStart = System.currentTimeMillis();
+        currentCycleDuration = BASE_GREEN_TIME;
         extensionsUsed = 0;
     }
 
     private void initializeMQ()
     {
         try {
-
             ConnectionFactory factory =
-                new ActiveMQConnectionFactory(
-                    "tcp://localhost:61616"
-                );
+                new ActiveMQConnectionFactory("tcp://localhost:61616");
 
-            connection =
-                factory.createConnection();
-
+            connection = factory.createConnection();
             connection.start();
 
-            session =
-                connection.createSession(
-                    false,
-                    Session.AUTO_ACKNOWLEDGE
-                );
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
-            Destination destination =
-                session.createQueue(
-                    "traffic.sensor"
-                );
+            Destination destination = session.createQueue("traffic.sensor");
 
-            consumer =
-                session.createConsumer(
-                    destination
-                );
+            consumer = session.createConsumer(destination);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private String extract(
-        String json,
-        String key
-    )
+    private String extract(String json, String key)
     {
-        String pattern =
-            "\"" + key + "\":";
+        String pattern = "\"" + key + "\":";
 
-        int start =
-            json.indexOf(pattern)
-            + pattern.length();
+        int start = json.indexOf(pattern) + pattern.length();
 
-        if (
-            json.charAt(start)
-            == '"'
-        ) {
-
+        if (json.charAt(start) == '"') {
             start++;
-
-            int end =
-                json.indexOf(
-                    "\"",
-                    start
-                );
-
-            return json.substring(
-                start,
-                end
-            );
+            int end = json.indexOf("\"", start);
+            return json.substring(start, end);
         }
 
-        int end =
-            json.indexOf(
-                ",",
-                start
-            );
+        int end = json.indexOf(",", start);
 
         if (end == -1) {
-
-            end =
-                json.indexOf(
-                    "}",
-                    start
-                );
+            end = json.indexOf("}", start);
         }
 
-        return json.substring(
-            start,
-            end
-        );
+        return json.substring(start, end);
     }
 }
